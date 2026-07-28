@@ -1,0 +1,13 @@
+streamlit
+langchain
+langchain-openai
+langchain-community
+langchain-text-splitters
+chromadb
+pdfplumber
+docx2txt
+textract
+pypdf
+sentence-transformers
+paddlepaddle==2.6.1
+paddleocr==2.7.0

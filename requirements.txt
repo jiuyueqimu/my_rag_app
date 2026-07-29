@@ -1,7 +1,4 @@
 streamlit
-easyocr
-opencv-python-headless
-numpy
 langchain
 langchain-openai
 langchain-community

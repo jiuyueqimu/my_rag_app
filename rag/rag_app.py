@@ -1,5 +1,5 @@
 import os
-#os.environ["HF_ENDPOINT"] = "https://hf-mirror.com"
+os.environ["HF_ENDPOINT"] = "https://hf-mirror.com"
 
 import tempfile
 import time
@@ -11,7 +11,6 @@ import json
 import shutil
 from datetime import datetime
 
-# LangChain 相关
 from langchain_community.document_loaders import TextLoader
 from langchain_text_splitters import RecursiveCharacterTextSplitter
 from langchain_community.vectorstores import Chroma
@@ -20,13 +19,6 @@ from langchain_openai import ChatOpenAI
 from langchain.tools import tool
 from langchain.agents import create_agent
 from langchain_core.documents import Document
-
-# OCR 相关（尝试导入，如果失败则降级）
-try:
-    from paddleocr import PaddleOCR
-    OCR_AVAILABLE = True
-except ImportError:
-    OCR_AVAILABLE = False
 
 # ========== 页面配置 ==========
 st.set_page_config(page_title="个人知识库问答", page_icon="📚")
@@ -51,10 +43,8 @@ EMBEDDING_MODEL = "sentence-transformers/all-MiniLM-L6-v2"
 os.makedirs(BASE_DB_DIR, exist_ok=True)
 MANIFEST_FILE = os.path.join(BASE_DB_DIR, "manifest.json")
 
-# ---------- 全局变量 ----------
 _CURRENT_DB_PATH = None
 
-# ---------- 模式状态 ----------
 if "mode" not in st.session_state:
     st.session_state.mode = "普通聊天"
 
@@ -109,16 +99,6 @@ def get_llm():
     os.environ["OPENAI_API_BASE"] = "https://api.deepseek.com/v1"
     return ChatOpenAI(model="deepseek-chat", temperature=0, timeout=60)
 
-@st.cache_resource
-def get_ocr_engine():
-    if not OCR_AVAILABLE:
-        return None
-    try:
-        # 使用最简参数，避免版本兼容问题
-        return PaddleOCR(use_angle_cls=True, lang="ch")
-    except Exception:
-        return None
-
 def create_new_db(chunks, embeddings):
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S_%f")
     new_db_path = os.path.join(BASE_DB_DIR, f"db_{timestamp}")
@@ -138,7 +118,6 @@ def process_uploaded_file(uploaded_file, status_placeholder):
         text = ""
         status_placeholder.info(f"⏳ 正在处理 {uploaded_file.name} ...")
 
-        # ---------- PDF ----------
         if suffix == ".pdf":
             progress_bar = st.progress(0, text="正在解析 PDF...")
             try:
@@ -157,7 +136,6 @@ def process_uploaded_file(uploaded_file, status_placeholder):
                 status_placeholder.error("❌ PDF 文件不包含可提取的文本。")
                 return False, "PDF 文件不包含可提取的文本。"
 
-        # ---------- DOCX ----------
         elif suffix == ".docx":
             try:
                 text = docx2txt.process(tmp_path)
@@ -168,7 +146,6 @@ def process_uploaded_file(uploaded_file, status_placeholder):
                 status_placeholder.error("❌ DOCX 文件不包含可提取的文本。")
                 return False, "DOCX 文件不包含可提取的文本。"
 
-        # ---------- DOC ----------
         elif suffix == ".doc":
             try:
                 text = textract.process(tmp_path).decode('utf-8', errors='ignore')
@@ -179,7 +156,6 @@ def process_uploaded_file(uploaded_file, status_placeholder):
                 status_placeholder.error("❌ DOC 文件不包含可提取的文本。")
                 return False, "DOC 文件不包含可提取的文本。"
 
-        # ---------- TXT ----------
         elif suffix == ".txt":
             loader = TextLoader(tmp_path, encoding="utf-8")
             docs = loader.load()
@@ -187,34 +163,10 @@ def process_uploaded_file(uploaded_file, status_placeholder):
             if not text.strip():
                 status_placeholder.error("❌ TXT 文件为空。")
                 return False, "TXT 文件为空。"
-
-        # ---------- 图片 ----------
-        elif suffix in [".png", ".jpg", ".jpeg", ".bmp"]:
-            ocr = get_ocr_engine()
-            if ocr is None:
-                status_placeholder.error("❌ 当前环境不支持 OCR，无法识别图片。请使用 PDF、DOCX 等文本格式。")
-                return False, "OCR 不可用，请使用文本格式文档。"
-            status_placeholder.info("⏳ 正在识别图片中的文字...")
-            try:
-                result = ocr.ocr(tmp_path)
-                if result and result[0]:
-                    for line in result[0]:
-                        text += line[1][0] + "\n"
-                else:
-                    status_placeholder.warning("⚠️ 未能从图片中识别出文字。")
-            except Exception as e:
-                status_placeholder.error(f"❌ OCR 识别失败：{str(e)}")
-                return False, f"OCR 识别失败：{str(e)}"
-            if not text.strip():
-                status_placeholder.error("❌ 未能从图片中提取到任何文字。")
-                return False, "未能从图片中提取到任何文字。"
-
-        # ---------- 不支持格式 ----------
         else:
-            status_placeholder.error("❌ 不支持的文件格式，请上传 PDF, DOC, DOCX, TXT 或常见图片格式。")
-            return False, "不支持的文件格式，请上传 PDF, DOC, DOCX, TXT 或常见图片格式。"
+            status_placeholder.error("❌ 不支持的文件格式，请上传 PDF, DOC, DOCX 或 TXT。")
+            return False, "不支持的文件格式，请上传 PDF, DOC, DOCX 或 TXT。"
 
-        # ---------- 切分并存入向量库 ----------
         status_placeholder.info(f"⏳ 正在切分并存入向量库...")
         docs = [Document(page_content=text)]
         splitter = RecursiveCharacterTextSplitter(chunk_size=500, chunk_overlap=50)
@@ -261,7 +213,6 @@ def query_knowledge(question: str) -> str:
 
 llm = get_llm()
 
-# ---------- 根据模式创建 Agent ----------
 def create_agent_for_mode(mode):
     if mode == "普通聊天":
         system_prompt = """你是一个友好的AI助手，可以进行任何话题的闲聊、回答问题、提供建议等。
@@ -287,7 +238,6 @@ def create_agent_for_mode(mode):
             system_prompt=system_prompt
         )
 
-# ---------- 初始化 session_state ----------
 if "chat_histories" not in st.session_state:
     st.session_state.chat_histories = {}
 if "current_db_path" not in st.session_state:
@@ -298,7 +248,6 @@ if "current_db_path" not in st.session_state:
     else:
         st.session_state.current_db_path = None
 
-# ---------- 同步全局变量 ----------
 _CURRENT_DB_PATH = st.session_state.current_db_path
 
 def get_current_doc_id():
@@ -311,11 +260,9 @@ def ensure_current_history():
     if doc_id and doc_id not in st.session_state.chat_histories:
         st.session_state.chat_histories[doc_id] = []
 
-# ---------- 界面 ----------
 st.title("📚 个人知识库问答助手")
 st.markdown(f"当前用户：**{username}**")
 
-# ===== 模式选择 =====
 mode = st.radio(
     "选择模式",
     ["普通聊天", "文档问答"],
@@ -329,13 +276,12 @@ if mode != st.session_state.mode:
 
 st.markdown(f"当前模式：**{mode}**")
 
-# ---------- 侧边栏 ----------
 with st.sidebar:
     if mode == "文档问答":
         st.header("📁 文档管理")
         uploaded_files = st.file_uploader(
-            "上传文档（支持 PDF / DOC / DOCX / TXT / 图片）",
-            type=["pdf", "doc", "docx", "txt", "png", "jpg", "jpeg", "bmp"],
+            "上传文档（支持 PDF / DOC / DOCX / TXT）",
+            type=["pdf", "doc", "docx", "txt"],
             accept_multiple_files=True
         )
         if uploaded_files:
@@ -414,7 +360,6 @@ with st.sidebar:
 
     st.caption("💡 切换模式后，对话历史会独立保存。")
 
-# ---------- 获取当前对话历史 ----------
 def get_history_key():
     if mode == "普通聊天":
         return "chat_general"
@@ -430,12 +375,10 @@ if history_key not in st.session_state.chat_histories:
     st.session_state.chat_histories[history_key] = []
 history = st.session_state.chat_histories[history_key]
 
-# ---------- 显示对话历史 ----------
 for msg in history:
     with st.chat_message(msg["role"]):
         st.write(msg["content"])
 
-# ---------- 用户输入 ----------
 if prompt := st.chat_input("输入你的问题..."):
     history.append({"role": "user", "content": prompt})
     st.session_state.chat_histories[history_key] = history
@@ -454,7 +397,6 @@ if prompt := st.chat_input("输入你的问题..."):
             
             response = agent.invoke({"messages": messages})
 
-            # ---------- 健壮提取回答 ----------
             answer = None
             if isinstance(response, dict):
                 if "output" in response:

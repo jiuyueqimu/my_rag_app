@@ -1,0 +1,5 @@
+[server]
+maxUploadSize = 200
+
+[runtime]
+pythonVersion = "3.11"

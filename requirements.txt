@@ -1,0 +1,15 @@
+streamlit>=1.28.0
+paddlepaddle==2.6.1
+paddleocr==2.8.1
+opencv-python-headless==4.8.1.78
+numpy==1.24.3
+langchain
+langchain-openai
+langchain-community
+langchain-text-splitters
+chromadb
+pdfplumber
+docx2txt
+textract
+pypdf
+sentence-transformers
